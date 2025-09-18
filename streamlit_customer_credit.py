@@ -145,6 +145,10 @@ def run_llm_query(llm, df: pd.DataFrame, user_query: str):
             "Given the user query: '{query}', "
             "write a SQL query for SQLite to answer it. "
             "Assume the table is named 'df'. "
+            "If you don't receive what column you need to show, assume that you need to show all columns. "
+            "Add parameter on the WHERE clause following the parameters given by the user. "
+            "When you are giving a specific conditions or parameters, don't add unrelated filter"
+            "If you given a question unrelated with the data, just say 'I don't know'. "
             "Return ONLY the SQL query, nothing else."
         )
     )
@@ -216,17 +220,26 @@ if submit:
         with st.spinner("Processing your query..."):
             llm = get_gemini_llm(gemini_api_key)
             sql_query, result, explanation = run_llm_query(llm, df, user_query)
-            st.markdown(f"**Generated SQL Query:**\n```sql\n{sql_query}\n```")
-            if result is not None and not result.empty:
-                # Format numeric columns with thousand separator
+            # Only display the SQL query if it exists and is a string
+            if isinstance(sql_query, str) and sql_query.strip():
+                st.markdown(f"**Generated SQL Query:**\n{sql_query.strip()}")
+            if isinstance(result, pd.DataFrame) and not result.empty:
+                # Format numeric columns with thousand separator, including CC Limit and CC Balance even if dtype is object
                 result_fmt = result.copy()
-                for col in result_fmt.select_dtypes(include=[np.number]).columns:
-                    result_fmt[col] = result_fmt[col].apply(lambda x: f"{x:,.0f}")
+                for col in result_fmt.columns:
+                    if col in ["CC Limit", "CC Balance"]:
+                        result_fmt[col] = pd.to_numeric(result_fmt[col], errors='coerce').apply(
+                            lambda x: f"{x:,.0f}" if pd.notnull(x) else ""
+                        )
+                    elif pd.api.types.is_numeric_dtype(result_fmt[col]):
+                        result_fmt[col] = result_fmt[col].apply(lambda x: f"{x:,.0f}")
                 st.markdown("**Query Result:**")
                 st.dataframe(result_fmt, use_container_width=True)
-                st.markdown(f"**Explanation:**\n{explanation}")
-            elif result is not None and result.empty:
+                if explanation:
+                    st.markdown(f"**Explanation:**\n{explanation}")
+            elif isinstance(result, pd.DataFrame) and result.empty:
                 st.info("The query executed successfully, but returned no results.")
-                st.markdown(f"**Explanation:**\n{explanation}")
-            else:
+                if explanation:
+                    st.markdown(f"**Explanation:**\n{explanation}")
+            elif explanation and "Sorry, there was an error executing" in explanation:
                 st.error(explanation)
