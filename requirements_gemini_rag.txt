@@ -1,0 +1,13 @@
+langchain-huggingface
+numpy<2
+streamlit
+langchain
+faiss-cpu
+python-docx
+pypdf
+huggingface-hub
+google-genai
+langchain-google-genai
+langchain-community
+sentence-transformers
+docx2txt
